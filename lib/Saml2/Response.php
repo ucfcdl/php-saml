@@ -355,7 +355,8 @@ class OneLogin_Saml2_Response
         }
 
         if (!isset($nameId)) {
-            throw new Exception("Not NameID found in the assertion of the Response");
+            //throw new Exception("Not NameID found in the assertion of the Response");
+            return;
         }
 
         $nameIdData = array();
