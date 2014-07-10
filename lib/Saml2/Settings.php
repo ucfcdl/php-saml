@@ -339,6 +339,13 @@ class OneLogin_Saml2_Settings
         if (!isset($this->_sp['privateKey'])) {
             $this->_sp['privateKey'] = '';
         }
+
+        if (!isset($this->_sp['validUntil'])) {
+            $this->_sp['validUntil'] = null;
+        }
+        if (!isset($this->_sp['cacheDuration'])) {
+            $this->_sp['cacheDuration'] = null;
+        }
     }
 
     /**
@@ -591,7 +598,7 @@ class OneLogin_Saml2_Settings
      */
     public function getSPMetadata()
     {
-        $metadata = OneLogin_Saml2_Metadata::builder($this->_sp, $this->_security['authnRequestsSigned'], $this->_security['wantAssertionsSigned'], null, null, $this->getContacts(), $this->getOrganization());
+        $metadata = OneLogin_Saml2_Metadata::builder($this->_sp, $this->_security['authnRequestsSigned'], $this->_security['wantAssertionsSigned'], $this->_sp['validUntil'], $this->_sp['cacheDuration'], $this->getContacts(), $this->getOrganization());
 
         $cert = $this->getSPcert();
 
