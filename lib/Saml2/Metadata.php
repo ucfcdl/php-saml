@@ -84,6 +84,19 @@ CONTACT;
             $strContacts = implode("\n", $contactsInfo);
         }
 
+        $extensions = '';
+        if (isset($sp['uiInfo']))
+        {
+            $extensions = <<<EXTENSIONS
+    <md:Extensions>
+      <mdui:UIInfo xmlns:mdui="urn:oasis:names:tc:SAML:metadata:ui">
+        <mdui:DisplayName xml:lang="en">{$sp['uiInfo']['displayName']}</mdui:DisplayName>
+        <mdui:Logo height="64" width="100" xml:lang="en">{$sp['uiInfo']['logo']}</mdui:Logo>
+      </mdui:UIInfo>
+    </md:Extensions>
+EXTENSIONS;
+        }
+
         $metadata = <<<METADATA_TEMPLATE
 <?xml version="1.0"?>
 <md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata"
@@ -96,6 +109,7 @@ CONTACT;
                                      Location="{$sp['assertionConsumerService']['url']}"
                                      index="1" />
 {$sls}
+{$extensions}
     </md:SPSSODescriptor>
 {$strOrganization}
 {$strContacts}
