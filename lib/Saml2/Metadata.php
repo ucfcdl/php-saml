@@ -26,13 +26,9 @@ class OneLogin_Saml2_Metadata
     public static function builder($sp, $authnsign = false, $wsign = false, $validUntil = null, $cacheDuration = null, $contacts = array(), $organization = array())
     {
 
-        if (!isset($validUntil)) {
-            $validUntil =  time() + self::TIME_VALID;
-        }
-        $validUntilTime =  gmdate('Y-m-d\TH:i:s\Z', $validUntil);
-
-        if (!isset($cacheDuration)) {
-            $cacheDuration = time() + self::TIME_CACHED;
+        $validUntilTime = null;
+        if (isset($validUntil)) {
+            $validUntilTime =  gmdate('Y-m-d\TH:i:s\Z', $validUntil);
         }
 
         $sls = '';
@@ -97,12 +93,21 @@ CONTACT;
 EXTENSIONS;
         }
 
+        $validUntilString = "";
+        $cacheDurationString = "";
+        if ($validUntilTime) {
+            $validUntilString = "validUntil=\"{$validUntilTime}\"";
+        }
+        if ($cacheDuration) {
+            $cacheDurationString = "cacheDuration=\"PT{$cacheDuration}S\"";
+        }
+
         $metadata = <<<METADATA_TEMPLATE
 <?xml version="1.0"?>
 <md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata"
-                     validUntil="{$validUntilTime}"
-                     cacheDuration="PT{$cacheDuration}S"
-                     entityID="{$sp['entityId']}">
+        {$validUntilString}
+        {$cacheDurationString}
+        entityID="{$sp['entityId']}">
     <md:SPSSODescriptor AuthnRequestsSigned="{$strAuthnsign}" WantAssertionsSigned="{$strWsign}" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
         <md:NameIDFormat>{$sp['NameIDFormat']}</md:NameIDFormat>
         <md:AssertionConsumerService Binding="{$sp['assertionConsumerService']['binding']}"
