@@ -17,13 +17,19 @@ class OneLogin_Saml2_LogoutResponse
      * The decoded, unprocessed XML response provided to the constructor.
      * @var string
      */
-    private $_logoutResponse;
+    protected $_logoutResponse;
 
     /**
      * A DOMDocument class loaded from the SAML LogoutResponse.
      * @var DomDocument
      */
     public $document;
+
+    /**
+    * After execute a validation process, if it fails, this var contains the cause
+    * @var string
+    */
+    private $_error;
 
     /**
      * Constructs a Logout Response object (Initialize params from settings and if provided
@@ -35,9 +41,20 @@ class OneLogin_Saml2_LogoutResponse
     public function __construct(OneLogin_Saml2_Settings $settings, $response = null)
     {
         $this->_settings = $settings;
+
+        $baseURL = $this->_settings->getBaseURL();
+        if (!empty($baseURL)) {
+            OneLogin_Saml2_Utils::setBaseURL($baseURL);
+        }
+
         if ($response) {
             $decoded = base64_decode($response);
-            $this->_logoutResponse = gzinflate($decoded);
+            $inflated = @gzinflate($decoded);
+            if ($inflated != false) {
+                $this->_logoutResponse = $inflated;
+            } else {
+                $this->_logoutResponse = $decoded;
+            }
             $this->document = new DOMDocument();
             $this->document = OneLogin_Saml2_Utils::loadXML($this->document, $this->_logoutResponse);
         }
@@ -60,13 +77,13 @@ class OneLogin_Saml2_LogoutResponse
 
     /**
      * Gets the Status of the Logout Response.
-     * 
+     *
      * @return string The Status
      */
     public function getStatus()
     {
         $entries = $this->_query('/samlp:LogoutResponse/samlp:Status/samlp:StatusCode');
-        if ($entries->length == 0) {
+        if ($entries->length != 1) {
             return null;
         }
         $status = $entries->item(0)->getAttribute('Value');
@@ -76,26 +93,30 @@ class OneLogin_Saml2_LogoutResponse
     /**
      * Determines if the SAML LogoutResponse is valid
      *
-     * @param string $requestId The ID of the LogoutRequest sent by this SP to the IdP
+     * @param string|null $requestId The ID of the LogoutRequest sent by this SP to the IdP
+     * @param bool $retrieveParametersFromServer
+     *
+     * @return bool Returns if the SAML LogoutResponse is or not valid
      *
      * @throws Exception
-     * @return bool Returns if the SAML LogoutResponse is or not valid
      */
-    public function isValid($requestId = null)
+    public function isValid($requestId = null, $retrieveParametersFromServer=false)
     {
+        $this->_error = null;
         try {
 
             $idpData = $this->_settings->getIdPData();
             $idPEntityId = $idpData['entityId'];
 
             if ($this->_settings->isStrict()) {
-
-                $res = OneLogin_Saml2_Utils::validateXML($this->document, 'saml-schema-protocol-2.0.xsd', $this->_settings->isDebugActive());
-                if (!$res instanceof DOMDocument) {
-                    throw new Exception("Invalid SAML Logout Response. Not match the saml-schema-protocol-2.0.xsd");
-                }
-
                 $security = $this->_settings->getSecurityData();
+
+                if ($security['wantXMLValidation']) {
+                    $res = OneLogin_Saml2_Utils::validateXML($this->document, 'saml-schema-protocol-2.0.xsd', $this->_settings->isDebugActive());
+                    if (!$res instanceof DOMDocument) {
+                        throw new Exception("Invalid SAML Logout Response. Not match the saml-schema-protocol-2.0.xsd");
+                    }
+                }
 
                 // Check if the InResponseTo of the Logout Response matchs the ID of the Logout Request (requestId) if provided
                 if (isset($requestId) && $this->document->documentElement->hasAttribute('InResponseTo')) {
@@ -107,18 +128,18 @@ class OneLogin_Saml2_LogoutResponse
 
                 // Check issuer
                 $issuer = $this->getIssuer();
-                if (empty($issuer) || $issuer != $idPEntityId) {
-                    throw new Exception("Invalid issuer in the Logout Request");
+                if (!empty($issuer) && $issuer != $idPEntityId) {
+                    throw new Exception("Invalid issuer in the Logout Response");
                 }
 
-                $currentURL = OneLogin_Saml2_Utils::getSelfURLNoQuery();
+                $currentURL = OneLogin_Saml2_Utils::getSelfRoutedURLNoQuery();
 
                 // Check destination
                 if ($this->document->documentElement->hasAttribute('Destination')) {
                     $destination = $this->document->documentElement->getAttribute('Destination');
                     if (!empty($destination)) {
                         if (strpos($destination, $currentURL) === false) {
-                            throw new Exception("The LogoutRequest was received at $currentURL instead of $destination");
+                            throw new Exception("The LogoutResponse was received at $currentURL instead of $destination");
                         }
                     }
                 }
@@ -137,15 +158,19 @@ class OneLogin_Saml2_LogoutResponse
                     $signAlg = $_GET['SigAlg'];
                 }
 
-                if ($signAlg != XMLSecurityKey::RSA_SHA1) {
-                    throw new Exception('Invalid signAlg in the recieved Logout Response');
+                if ($retrieveParametersFromServer) {
+                    $signedQuery = 'SAMLResponse='.OneLogin_Saml2_Utils::extractOriginalQueryParam('SAMLResponse');
+                    if (isset($_GET['RelayState'])) {
+                        $signedQuery .= '&RelayState='.OneLogin_Saml2_Utils::extractOriginalQueryParam('RelayState');
+                    }
+                    $signedQuery .= '&SigAlg='.OneLogin_Saml2_Utils::extractOriginalQueryParam('SigAlg');
+                } else {
+                    $signedQuery = 'SAMLResponse='.urlencode($_GET['SAMLResponse']);
+                    if (isset($_GET['RelayState'])) {
+                        $signedQuery .= '&RelayState='.urlencode($_GET['RelayState']);
+                    }
+                    $signedQuery .= '&SigAlg='.urlencode($signAlg);
                 }
-
-                $signedQuery = 'SAMLResponse='.urlencode($_GET['SAMLResponse']);
-                if (isset($_GET['RelayState'])) {
-                    $signedQuery .= '&RelayState='.urlencode($_GET['RelayState']);
-                }
-                $signedQuery .= '&SigAlg='.urlencode($signAlg);
 
                 if (!isset($idpData['x509cert']) || empty($idpData['x509cert'])) {
                     throw new Exception('In order to validate the sign on the Logout Response, the x509cert of the IdP is required');
@@ -155,15 +180,24 @@ class OneLogin_Saml2_LogoutResponse
                 $objKey = new XMLSecurityKey(XMLSecurityKey::RSA_SHA1, array('type' => 'public'));
                 $objKey->loadKey($cert, false, true);
 
+                if ($signAlg != XMLSecurityKey::RSA_SHA1) {
+                    try {
+                        $objKey = OneLogin_Saml2_Utils::castKey($objKey, $signAlg, 'public');
+                    } catch (Exception $e) {
+                        throw new Exception('Invalid signAlg in the recieved Logout Response');
+                    }
+                }
+
                 if (!$objKey->verifySignature($signedQuery, base64_decode($_GET['Signature']))) {
                     throw new Exception('Signature validation failed. Logout Response rejected');
                 }
             }
             return true;
         } catch (Exception $e) {
+            $this->_error = $e->getMessage();
             $debug = $this->_settings->isDebugActive();
             if ($debug) {
-                echo $e->getMessage();
+                echo $this->_error;
             }
             return false;
         }
@@ -185,7 +219,7 @@ class OneLogin_Saml2_LogoutResponse
     /**
      * Generates a Logout Response object.
      *
-     * @param string $inResponseTo InResponseTo value for the Logout Response. 
+     * @param string $inResponseTo InResponseTo value for the Logout Response.
      */
     public function build($inResponseTo)
     {
@@ -216,12 +250,31 @@ LOGOUTRESPONSE;
 
     /**
      * Returns a Logout Response object.
-     *
+     * 
+     * @param bool|null $deflate Whether or not we should 'gzdeflate' the response body before we return it.
+     *                           
      * @return string Logout Response deflated and base64 encoded
      */
-    public function getResponse()
+    public function getResponse($deflate = null)
     {
-        $deflatedResponse = gzdeflate($this->_logoutResponse);
-        return base64_encode($deflatedResponse);
+        $subject = $this->_logoutResponse;
+
+        if (is_null($deflate)) {
+            $deflate = $this->_settings->shouldCompressResponses();
+        }
+
+        if ($deflate) {
+            $subject = gzdeflate($this->_logoutResponse);
+        }
+        return base64_encode($subject);
+    }
+
+    /* After execute a validation process, if fails this method returns the cause.
+     *
+     * @return string Cause
+     */
+    public function getError()
+    {
+        return $this->_error;
     }
 }

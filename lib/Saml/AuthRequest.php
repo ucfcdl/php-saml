@@ -12,7 +12,7 @@ class OneLogin_Saml_AuthRequest
      * Constructs the OneLogin_Saml2_Auth, initializing
      * the SP SAML instance.
      *
-     * @param OneLogin_Saml2_Settings $settings Settings
+     * @param array|object $settings SAML Toolkit Settings
      */
     public function __construct($settings)
     {
@@ -23,7 +23,11 @@ class OneLogin_Saml_AuthRequest
      * Obtains the SSO URL containing the AuthRequest
      * message deflated.
      *
-     * @param OneLogin_Saml2_Settings $settings Settings
+     * @param string|null $returnTo
+     *
+     * @return string
+     *
+     * @throws OneLogin_Saml2_Error
      */
     public function getRedirectUrl($returnTo = null)
     {
@@ -33,17 +37,23 @@ class OneLogin_Saml_AuthRequest
         if (!empty($returnTo)) {
             $parameters['RelayState'] = $returnTo;
         } else {
-            $parameters['RelayState'] = OneLogin_Saml2_Utils::getSelfURLNoQuery();
+            $parameters['RelayState'] = OneLogin_Saml2_Utils::getSelfRoutedURLNoQuery();
         }
         $url = OneLogin_Saml2_Utils::redirect($this->auth->getSSOurl(), $parameters, true);
         return $url;
     }
 
+    /**
+     * @return string
+     */
     protected function _generateUniqueID()
     {
         return OneLogin_Saml2_Utils::generateUniqueID();
     }
 
+    /**
+     * @return string
+     */
     protected function _getTimestamp()
     {
         $defaultTimezone = date_default_timezone_get();

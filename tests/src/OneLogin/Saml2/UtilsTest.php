@@ -2,6 +2,8 @@
 
 /**
  * Unit tests for Utils class
+ *
+ * @backupStaticAttributes enabled
  */
 class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
 {
@@ -116,12 +118,20 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
 
         $metadataOk = file_get_contents(TEST_ROOT .'/data/metadata/metadata_settings1.xml');
         $res2 = OneLogin_Saml2_Utils::validateXML($metadataOk, 'saml-schema-metadata-2.0.xsd');
-        $this->assertTrue($res instanceof DOMDocument);
+        $this->assertTrue($res2 instanceof DOMDocument);
+
+        $metadataBadOrder = file_get_contents(TEST_ROOT .'/data/metadata/metadata_bad_order_settings1.xml');
+        $res3 = OneLogin_Saml2_Utils::validateXML($metadataBadOrder, 'saml-schema-metadata-2.0.xsd');
+        $this->assertFalse($res3 instanceof DOMDocument);
+
+        $metadataSigned = file_get_contents(TEST_ROOT .'/data/metadata/signed_metadata_settings1.xml');
+        $res4 = OneLogin_Saml2_Utils::validateXML($metadataSigned, 'saml-schema-metadata-2.0.xsd');
+        $this->assertTrue($res4 instanceof DOMDocument);
 
         $dom = new DOMDocument;
-        $dom->load($metadataOk);
-        $res2 = OneLogin_Saml2_Utils::validateXML($dom, 'saml-schema-metadata-2.0.xsd');
-        $this->assertTrue($res instanceof DOMDocument);
+        OneLogin_Saml2_Utils::loadXML($dom, $metadataOk);
+        $res5 = OneLogin_Saml2_Utils::validateXML($dom, 'saml-schema-metadata-2.0.xsd');
+        $this->assertTrue($res5 instanceof DOMDocument);
     }
 
     /**
@@ -256,6 +266,47 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
 
         $targetUrl7 = OneLogin_Saml2_Utils::redirect($url, $parameters2, true);
         $this->assertEquals("http://$hostname/example?alphavalue=a&numvalue[]=1&numvalue[]=2&testing", $targetUrl7);
+
+        $parameters3 = array (
+            'alphavalue' => 'a',
+            'emptynumvaluelist' => array (),
+            'numvaluelist' => array (''),
+        );
+
+        $targetUrl8 = OneLogin_Saml2_Utils::redirect($url, $parameters3, true);
+        $this->assertEquals("http://$hostname/example?alphavalue=a&numvaluelist[]=", $targetUrl8);
+    }
+
+    /**
+     * @covers OneLogin_Saml2_Utils::setSelfHost
+     */
+    public function testSetselfhost()
+    {
+        $_SERVER['HTTP_HOST'] = 'example.org';
+        $this->assertEquals('example.org', OneLogin_Saml2_Utils::getSelfHost());
+
+        OneLogin_Saml2_Utils::setSelfHost('example.com');
+        $this->assertEquals('example.com', OneLogin_Saml2_Utils::getSelfHost());
+    }
+
+    /**
+     * @covers OneLogin_Saml2_Utils::setProxyVars()
+     * @covers OneLogin_Saml2_Utils::getProxyVars()
+     */
+    public function testProxyvars()
+    {
+        $this->assertFalse(OneLogin_Saml2_Utils::getProxyVars());
+
+        OneLogin_Saml2_Utils::setProxyVars(true);
+        $this->assertTrue(OneLogin_Saml2_Utils::getProxyVars());
+
+        $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+        $_SERVER['SERVER_PORT'] = '80';
+
+        $this->assertTrue(OneLogin_Saml2_Utils::isHTTPS());
+
+        OneLogin_Saml2_Utils::setProxyVars(false);
+        $this->assertFalse(OneLogin_Saml2_Utils::isHTTPS());
     }
 
     /**
@@ -283,7 +334,13 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('example.org', OneLogin_Saml2_Utils::getSelfHost());
 
         $_SERVER['HTTP_HOST'] = 'example.org:ok';
-        $this->assertEquals('example.org:ok', OneLogin_Saml2_Utils::getSelfHost());
+        $this->assertEquals('example.org', OneLogin_Saml2_Utils::getSelfHost());
+
+        $_SERVER['HTTP_X_FORWARDED_HOST'] = 'example.net';
+        $this->assertNotEquals('example.net', OneLogin_Saml2_Utils::getSelfHost());
+
+        OneLogin_Saml2_Utils::setProxyVars(true);
+        $this->assertEquals('example.net', OneLogin_Saml2_Utils::getSelfHost());
     }
 
     /**
@@ -294,8 +351,135 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
     public function testisHTTPS()
     {
         $this->assertFalse(OneLogin_Saml2_Utils::isHTTPS());
+        
+        $_SERVER['HTTPS'] = 'on';
+        $this->assertTrue(OneLogin_Saml2_Utils::isHTTPS());
+    
+        unset($_SERVER['HTTPS']);
+        $this->assertFalse(OneLogin_Saml2_Utils::isHTTPS());
+        $_SERVER['HTTP_HOST'] = 'example.com:443';
+        $this->assertTrue(OneLogin_Saml2_Utils::isHTTPS());
     }
 
+    /**
+     * @covers OneLogin_Saml2_Utils::getSelfURLhost
+     */
+    public function testGetselfurlhostdoubleport()
+    {
+        OneLogin_Saml2_Utils::setProxyVars(true);
+        $_SERVER['HTTP_HOST'] = 'example.com:8080';
+        $_SERVER['HTTP_X_FORWARDED_PORT'] = 82;
+        $this->assertEquals('http://example.com:82', OneLogin_Saml2_Utils::getSelfURLhost());
+
+        $_SERVER['HTTP_HOST'] = 'example.com:ok';
+        $_SERVER['HTTP_X_FORWARDED_PORT'] = 82;
+        $this->assertEquals('http://example.com:82', OneLogin_Saml2_Utils::getSelfURLhost());
+    }
+
+    /**
+     * @covers OneLogin_Saml2_Utils::getSelfPort
+     */
+    public function testGetselfPort()
+    {
+        $this->assertNull(OneLogin_Saml2_Utils::getSelfPort());
+
+        $_SERVER['HTTP_HOST'] = 'example.org:ok';
+        $this->assertNull(OneLogin_Saml2_Utils::getSelfPort());
+
+        $_SERVER['HTTP_HOST'] = 'example.org:8080';
+        $this->assertEquals(8080, OneLogin_Saml2_Utils::getSelfPort());
+
+        $_SERVER["SERVER_PORT"] = 80;
+        $this->assertEquals(80, OneLogin_Saml2_Utils::getSelfPort());
+
+        $_SERVER["HTTP_X_FORWARDED_PORT"] = 443;
+        $this->assertEquals(80, OneLogin_Saml2_Utils::getSelfPort());
+
+        OneLogin_Saml2_Utils::setProxyVars(true);
+        $this->assertEquals(443, OneLogin_Saml2_Utils::getSelfPort());
+
+        OneLogin_Saml2_Utils::setSelfPort(8080);
+        $this->assertEquals(8080, OneLogin_Saml2_Utils::getSelfPort());
+    }
+
+    /**
+     * @covers OneLogin_Saml2_Utils::setSelfProtocol
+     */
+    public function testSetselfprotocol()
+    {
+        $this->assertFalse(OneLogin_Saml2_Utils::isHTTPS());
+
+        OneLogin_Saml2_Utils::setSelfProtocol('https');
+        $this->assertTrue(OneLogin_Saml2_Utils::isHTTPS());
+    }
+
+    /**
+     * @covers OneLogin_Saml2_Utils::setBaseURLPath
+     */
+    public function testSetBaseURLPath()
+    {
+        $this->assertNull(OneLogin_Saml2_Utils::getBaseURLPath());
+
+        OneLogin_Saml2_Utils::setBaseURLPath('sp');
+        $this->assertEquals('/sp/', OneLogin_Saml2_Utils::getBaseURLPath());
+
+        OneLogin_Saml2_Utils::setBaseURLPath('sp/');
+        $this->assertEquals('/sp/', OneLogin_Saml2_Utils::getBaseURLPath());
+
+        OneLogin_Saml2_Utils::setBaseURLPath('/sp');
+        $this->assertEquals('/sp/', OneLogin_Saml2_Utils::getBaseURLPath());
+
+        OneLogin_Saml2_Utils::setBaseURLPath('/sp/');
+        $this->assertEquals('/sp/', OneLogin_Saml2_Utils::getBaseURLPath());
+    }
+
+    /**
+     * @covers OneLogin_Saml2_Utils::setBaseURL
+     */
+    public function testSetBaseURL()
+    {
+        $_SERVER['HTTP_HOST'] = 'sp.example.com';
+        $_SERVER['HTTPS'] = 'https';
+        $_SERVER['REQUEST_URI'] = '/example1/route.php?x=test';
+        $_SERVER['QUERY_STRING'] = '?x=test';
+        $_SERVER['SCRIPT_NAME'] = '/example1/route.php';
+        unset($_SERVER['PATH_INFO']);
+
+        $expectedUrlNQ = 'https://sp.example.com/example1/route.php';
+        $expectedRoutedUrlNQ = 'https://sp.example.com/example1/route.php';
+        $expectedUrl = 'https://sp.example.com/example1/route.php?x=test';
+
+        OneLogin_Saml2_Utils::setBaseURL("no-valid-url");
+        $this->assertEquals('https', OneLogin_Saml2_Utils::getSelfProtocol());
+        $this->assertEquals('sp.example.com', OneLogin_Saml2_Utils::getSelfHost());
+        $this->assertNull(OneLogin_Saml2_Utils::getSelfPort());
+        $this->assertNull(OneLogin_Saml2_Utils::getBaseURLPath());
+
+        $this->assertEquals($expectedUrlNQ, OneLogin_Saml2_Utils::getSelfURLNoQuery());       
+        $this->assertEquals($expectedRoutedUrlNQ, OneLogin_Saml2_Utils::getSelfRoutedURLNoQuery());
+        $this->assertEquals($expectedUrl, OneLogin_Saml2_Utils::getSelfURL());
+
+        OneLogin_Saml2_Utils::setBaseURL("http://anothersp.example.com:81/example2/");
+        $expectedUrlNQ2 = 'http://anothersp.example.com:81/example2/route.php';
+        $expectedRoutedUrlNQ2 = 'http://anothersp.example.com:81/example2/route.php';
+        $expectedUrl2 = 'http://anothersp.example.com:81/example2/route.php?x=test';
+        
+        $this->assertEquals('http', OneLogin_Saml2_Utils::getSelfProtocol());
+        $this->assertEquals('anothersp.example.com', OneLogin_Saml2_Utils::getSelfHost());
+        $this->assertEquals('81', OneLogin_Saml2_Utils::getSelfPort());
+        $this->assertEquals('/example2/', OneLogin_Saml2_Utils::getBaseURLPath());
+
+        $this->assertEquals($expectedUrlNQ2, OneLogin_Saml2_Utils::getSelfURLNoQuery());       
+        $this->assertEquals($expectedRoutedUrlNQ2, OneLogin_Saml2_Utils::getSelfRoutedURLNoQuery());
+        $this->assertEquals($expectedUrl2, OneLogin_Saml2_Utils::getSelfURL());
+
+        $_SERVER['PATH_INFO'] = '/test';
+        $expectedUrlNQ2 = 'http://anothersp.example.com:81/example2/route.php/test';
+
+        $this->assertEquals($expectedUrlNQ2, OneLogin_Saml2_Utils::getSelfURLNoQuery());       
+        $this->assertEquals($expectedRoutedUrlNQ2, OneLogin_Saml2_Utils::getSelfRoutedURLNoQuery());
+        $this->assertEquals($expectedUrl2, OneLogin_Saml2_Utils::getSelfURL());
+    }
 
     /**
     * Tests the getSelfURLhost method of the OneLogin_Saml2_Utils
@@ -426,7 +610,7 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
             $statusInv = OneLogin_Saml2_Utils::getStatus($domInv);
             $this->assertTrue(false);
         } catch (Exception $e) {
-            $this->assertEquals('Missing Status on response', $e->getMessage());
+            $this->assertEquals('Missing valid Status on response', $e->getMessage());
         }
 
         $xmlInv2 = base64_decode(file_get_contents(TEST_ROOT . '/data/responses/invalids/no_status_code.xml.base64'));
@@ -437,7 +621,7 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
             $statusInv2 = OneLogin_Saml2_Utils::getStatus($domInv2);
             $this->assertTrue(false);
         } catch (Exception $e) {
-            $this->assertEquals('Missing Status Code on response', $e->getMessage());
+            $this->assertEquals('Missing valid Status Code on response', $e->getMessage());
         }
     }
 
@@ -513,7 +697,7 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
             OneLogin_Saml2_Utils::parseTime2SAML('invalidtime');
             $this->assertFalse(true);
         } catch (Exception $e) {
-            $this->assertContains('strftime() expects parameter 2 to be long', $e->getMessage());
+            $this->assertContains('strftime() expects parameter 2 to be', $e->getMessage());
         }
     }
 
@@ -555,31 +739,51 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
         $attributeStatement = $attributeStatementNodes->item(0);
         $this->assertEquals('saml:AttributeStatement', $attributeStatement->tagName);
 
-        $attributeStatementNodes2 = OneLogin_Saml2_Utils::query($dom, '/saml:AttributeStatement', $assertion);
-        $this->assertEquals($attributeStatementNodes, $attributeStatementNodes2);
+        $attributeStatementNodes2 = OneLogin_Saml2_Utils::query($dom, './saml:AttributeStatement', $assertion);
+        $this->assertEquals(1, $attributeStatementNodes2->length);
+        $attributeStatement2 = $attributeStatementNodes2->item(0);
+        $this->assertEquals($attributeStatement, $attributeStatement2);
 
-        $signatureNodes = OneLogin_Saml2_Utils::query($dom, '/samlp:Response/ds:Signature');
+        $signatureResNodes = OneLogin_Saml2_Utils::query($dom, '/samlp:Response/ds:Signature');
+        $this->assertEquals(1, $signatureResNodes->length);
+        $signatureRes = $signatureResNodes->item(0);
+        $this->assertEquals('ds:Signature', $signatureRes->tagName);
+
+        $signatureNodes = OneLogin_Saml2_Utils::query($dom, '/samlp:Response/saml:Assertion/ds:Signature');
         $this->assertEquals(1, $signatureNodes->length);
         $signature = $signatureNodes->item(0);
         $this->assertEquals('ds:Signature', $signature->tagName);
 
-        $signatureNodes2 = OneLogin_Saml2_Utils::query($dom, '/ds:Signature', $assertion);
-        $this->assertEquals(0, $signatureNodes2->length);
+        $signatureNodes2 = OneLogin_Saml2_Utils::query($dom, './ds:Signature', $assertion);
+        $this->assertEquals(1, $signatureNodes2->length);
+        $signature2 = $signatureNodes2->item(0);
+        $this->assertEquals($signature->textContent, $signature2->textContent);
+        $this->assertNotEquals($signatureRes->textContent, $signature2->textContent);
+
+        $signatureNodes3 = OneLogin_Saml2_Utils::query($dom, './ds:SignatureValue', $assertion);
+        $this->assertEquals(0, $signatureNodes3->length);
+
+        $signatureNodes4 = OneLogin_Saml2_Utils::query($dom, './ds:Signature/ds:SignatureValue', $assertion);
+        $this->assertEquals(1, $signatureNodes4->length);
+
+        $signatureNodes5 = OneLogin_Saml2_Utils::query($dom, './/ds:SignatureValue', $assertion);
+        $this->assertEquals(1, $signatureNodes5->length);
     }
 
     /**
     * Tests the generateNameId method of the OneLogin_Saml2_Utils
+    * Adding a SPNameQualifier
     *
     * @covers OneLogin_Saml2_Utils::generateNameId
     */
-    public function testGenerateNameId()
+    public function testGenerateNameIdWithSPNameQualifier()
     {
         //$xml = '<root xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'.$decrypted.'</root>';
         //$newDoc = new DOMDocument();
 
         $nameIdValue = 'ONELOGIN_ce998811003f4e60f8b07a311dc641621379cfde';
         $entityId = 'http://stuff.com/endpoints/metadata.php';
-        $nameIDFormat = 'urn:oasis:names:tc:SAML:2.0:nameid-format:unspecified';
+        $nameIDFormat = 'urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified';
 
         $nameId = OneLogin_Saml2_Utils::generateNameId(
             $nameIdValue,
@@ -587,7 +791,7 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
             $nameIDFormat
         );
 
-        $expectedNameId = '<saml:NameID SPNameQualifier="http://stuff.com/endpoints/metadata.php" Format="urn:oasis:names:tc:SAML:2.0:nameid-format:unspecified">ONELOGIN_ce998811003f4e60f8b07a311dc641621379cfde</saml:NameID>';
+        $expectedNameId = '<saml:NameID SPNameQualifier="http://stuff.com/endpoints/metadata.php" Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified">ONELOGIN_ce998811003f4e60f8b07a311dc641621379cfde</saml:NameID>';
 
         $this->assertEquals($nameId, $expectedNameId);
 
@@ -609,29 +813,79 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
     }
 
     /**
+    * Tests the generateNameId method of the OneLogin_Saml2_Utils
+    *
+    * @covers OneLogin_Saml2_Utils::generateNameId
+    */
+    public function testGenerateNameIdWithoutSPNameQualifier()
+    {
+        //$xml = '<root xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'.$decrypted.'</root>';
+        //$newDoc = new DOMDocument();
+
+        $nameIdValue = 'ONELOGIN_ce998811003f4e60f8b07a311dc641621379cfde';
+        $entityId = 'http://stuff.com/endpoints/metadata.php';
+        $nameIDFormat = 'urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified';
+
+        $nameId = OneLogin_Saml2_Utils::generateNameId(
+            $nameIdValue,
+            null,
+            $nameIDFormat
+        );
+
+        $expectedNameId = '<saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified">ONELOGIN_ce998811003f4e60f8b07a311dc641621379cfde</saml:NameID>';
+
+        $this->assertEquals($nameId, $expectedNameId);
+
+        $settingsDir = TEST_ROOT .'/settings/';
+        include $settingsDir.'settings1.php';
+
+        $x509cert = $settingsInfo['idp']['x509cert'];
+        $key = OneLogin_Saml2_Utils::formatCert($x509cert);
+
+        $nameIdEnc = OneLogin_Saml2_Utils::generateNameId(
+            $nameIdValue,
+            null,
+            $nameIDFormat,
+            $key
+        );
+
+        $nameidExpectedEnc = '<saml:EncryptedID><xenc:EncryptedData xmlns:xenc="http://www.w3.org/2001/04/xmlenc#" xmlns:dsig="http://www.w3.org/2000/09/xmldsig#" Type="http://www.w3.org/2001/04/xmlenc#Element"><xenc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/><dsig:KeyInfo xmlns:dsig="http://www.w3.org/2000/09/xmldsig#"><xenc:EncryptedKey><xenc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#rsa-1_5"/><xenc:CipherData><xenc:CipherValue>';
+        $this->assertContains($nameidExpectedEnc, $nameIdEnc);
+    }
+
+    /**
     * Tests the deleteLocalSession method of the OneLogin_Saml2_Utils
     *
     * @covers OneLogin_Saml2_Utils::deleteLocalSession
     */
     public function testDeleteLocalSession()
     {
-        if (!isset($_SESSION)) {
-            $_SESSION = array();
+        if (getenv("TRAVIS")) {
+            // Can't test that on TRAVIS
+            $this->markTestSkipped("Can't test that on TRAVIS");
+        } else {
+
+            if (!isset($_SESSION)) {
+                $_SESSION = array();
+            }
+            $_SESSION['samltest'] = true;
+
+            $this->assertTrue(isset($_SESSION['samltest']));
+            $this->assertTrue($_SESSION['samltest']);
+
+            OneLogin_Saml2_Utils::deleteLocalSession();
+            $this->assertFalse(isset($_SESSION));
+            $this->assertFalse(isset($_SESSION['samltest']));
+
+            $prev = error_reporting(0);
+            session_start();
+            error_reporting($prev);
+
+            $_SESSION['samltest'] = true;
+            OneLogin_Saml2_Utils::deleteLocalSession();
+            $this->assertFalse(isset($_SESSION));
+            $this->assertFalse(isset($_SESSION['samltest']));
         }
-        $_SESSION['samltest'] = true;
-
-        $this->assertTrue(isset($_SESSION['samltest']));
-        $this->assertTrue($_SESSION['samltest']);
-
-        OneLogin_Saml2_Utils::deleteLocalSession();
-        $this->assertFalse(isset($_SESSION));
-        $this->assertFalse(isset($_SESSION['samltest']));
-
-        session_start();
-        $_SESSION['samltest'] = true;
-        OneLogin_Saml2_Utils::deleteLocalSession();
-        $this->assertFalse(isset($_SESSION));
-        $this->assertFalse(isset($_SESSION['samltest']));
     }
 
     /**
@@ -641,11 +895,19 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
     */
     public function testisSessionStarted()
     {
-        $this->assertFalse(OneLogin_Saml2_Utils::isSessionStarted());
+        if (getenv("TRAVIS")) {
+            // Can't test that on TRAVIS
+            $this->markTestSkipped("Can't test that on TRAVIS");
+        } else {
 
-        session_start();
+            $this->assertFalse(OneLogin_Saml2_Utils::isSessionStarted());
 
-        $this->assertTrue(OneLogin_Saml2_Utils::isSessionStarted());
+            $prev = error_reporting(0);
+            session_start();
+            error_reporting($prev);
+
+            $this->assertTrue(OneLogin_Saml2_Utils::isSessionStarted());
+        }
     }
 
 
@@ -668,6 +930,14 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
         $this->assertNull(OneLogin_Saml2_Utils::calculateX509Fingerprint($key));
 
         $this->assertEquals('afe71c28ef740bc87425be13a2263d37971da1f9', OneLogin_Saml2_Utils::calculateX509Fingerprint($cert));
+
+        $this->assertEquals('afe71c28ef740bc87425be13a2263d37971da1f9', OneLogin_Saml2_Utils::calculateX509Fingerprint($cert, 'sha1'));
+
+        $this->assertEquals('c51cfa06c7a49767f6eab18238eae1c56708e29264da3d11f538a12cd2c357ba', OneLogin_Saml2_Utils::calculateX509Fingerprint($cert, 'sha256'));
+
+        $this->assertEquals('bc5826e6f9429247254bae5e3c650e6968a36a62d23075eb168134978d88600559c10830c28711b2c29c7947c0c2eb1d', OneLogin_Saml2_Utils::calculateX509Fingerprint($cert, 'sha384'));
+
+        $this->assertEquals('3db29251b97559c67988ea0754cb0573fc409b6f75d89282d57cfb75089539b0bbdb2dcd9ec6e032549ecbc466439d5992e18db2cf5494ca2fe1b2e16f348dff', OneLogin_Saml2_Utils::calculateX509Fingerprint($cert, 'sha512'));
     }
 
     /**
@@ -839,10 +1109,14 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
         $idpData = $settings->getIdPData();
         $cert = $idpData['x509cert'];
         $fingerprint = OneLogin_Saml2_Utils::calculateX509Fingerprint($cert);
+        $fingerprint256 = OneLogin_Saml2_Utils::calculateX509Fingerprint($cert, 'sha256');
 
         $xmlMetadataSigned = file_get_contents(TEST_ROOT . '/data/metadata/signed_metadata_settings1.xml');
         $this->assertTrue(OneLogin_Saml2_Utils::validateSign($xmlMetadataSigned, $cert));
         $this->assertTrue(OneLogin_Saml2_Utils::validateSign($xmlMetadataSigned, null, $fingerprint));
+        $this->assertTrue(OneLogin_Saml2_Utils::validateSign($xmlMetadataSigned, null, $fingerprint, 'sha1'));
+        $this->assertFalse(OneLogin_Saml2_Utils::validateSign($xmlMetadataSigned, null, $fingerprint, 'sha256'));
+        $this->assertTrue(OneLogin_Saml2_Utils::validateSign($xmlMetadataSigned, null, $fingerprint256, 'sha256'));
 
         $xmlResponseMsgSigned = base64_decode(file_get_contents(TEST_ROOT . '/data/responses/signed_message_response.xml.base64'));
         $this->assertTrue(OneLogin_Saml2_Utils::validateSign($xmlResponseMsgSigned, $cert));
@@ -859,7 +1133,7 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
         $dom = new DOMDocument();
         $dom->loadXML($xmlResponseMsgSigned);
         $this->assertTrue(OneLogin_Saml2_Utils::validateSign($dom, $cert));
-        
+
         $dom->firstChild->firstChild->nodeValue = 'https://example.com/other-idp';
         try {
             $this->assertFalse(OneLogin_Saml2_Utils::validateSign($dom, $cert));
@@ -901,6 +1175,14 @@ class OneLogin_Saml2_UtilsTest extends PHPUnit_Framework_TestCase
             $this->assertTrue(false);
         } catch (Exception $e) {
             $this->assertContains('We have no idea about the key', $e->getMessage());
+        }
+
+        $signatureWrapping = base64_decode(file_get_contents(TEST_ROOT . '/data/responses/invalids/signature_wrapping_attack.xml.base64'));
+        try {
+            $this->assertFalse(OneLogin_Saml2_Utils::validateSign($signatureWrapping, $cert));
+            $this->assertTrue(false);
+        } catch (Exception $e) {
+            $this->assertContains('Reference validation failed', $e->getMessage());
         }
     }
 }

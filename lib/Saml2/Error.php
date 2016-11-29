@@ -21,13 +21,15 @@ class OneLogin_Saml2_Error extends Exception
     const SAML_LOGOUTREQUEST_INVALID = 10;
     const SAML_LOGOUTRESPONSE_INVALID  = 11;
     const SAML_SINGLE_LOGOUT_NOT_SUPPORTED = 12;
-    
+    const PUBLIC_CERT_NOT_FOUND = 13;
+    const PRIVATE_KEY_NOT_FOUND = 14;
+
     /**
      * Constructor
      *
-        * @param string  $msg  Describes the error.
-        * @param integer $code The code error (defined in the error class).
-        * @param array   $args Arguments used in the message that describes the error.
+     * @param string     $msg  Describes the error.
+     * @param int        $code The code error (defined in the error class).
+     * @param array|null $args Arguments used in the message that describes the error.
      */
     public function __construct($msg, $code = 0, $args = null)
     {
