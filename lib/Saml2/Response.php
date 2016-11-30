@@ -142,7 +142,7 @@ class OneLogin_Saml2_Response
                 }
 
                 $currentURL = OneLogin_Saml2_Utils::getSelfRoutedURLNoQuery();
-                
+
                 if ($this->document->documentElement->hasAttribute('InResponseTo')) {
                     $responseInResponseTo = $this->document->documentElement->getAttribute('InResponseTo');
                 }
@@ -273,7 +273,7 @@ class OneLogin_Saml2_Response
                 if ($security['wantAssertionsSigned'] && !$hasSignedAssertion) {
                     throw new Exception("The Assertion of the Response is not signed and the SP requires it");
                 }
-                
+
                 if ($security['wantMessagesSigned'] && !$hasSignedResponse) {
                     throw new Exception("The Message of the Response is not signed and the SP requires it");
                 }
@@ -318,7 +318,7 @@ class OneLogin_Saml2_Response
 
     /**
      * Checks if the Status is success
-     * 
+     *
      * @throws $statusExceptionMsg If status is not success
      */
     public function checkStatus()
@@ -370,7 +370,7 @@ class OneLogin_Saml2_Response
 
     /**
      * Gets the audiences.
-     * 
+     *
      * @return array @audience The valid audiences of the response
      */
     public function getAudiences()
@@ -390,7 +390,7 @@ class OneLogin_Saml2_Response
 
     /**
      * Gets the Issuers (from Response and Assertion).
-     * 
+     *
      * @return array @issuers The issuers of the assertion/response
      */
     public function getIssuers()
@@ -502,7 +502,7 @@ class OneLogin_Saml2_Response
     /**
      * Gets the SessionNotOnOrAfter from the AuthnStatement.
      * Could be used to set the local session expiration
-     * 
+     *
      * @return int|null The SessionNotOnOrAfter value
      */
     public function getSessionNotOnOrAfter()
@@ -520,7 +520,7 @@ class OneLogin_Saml2_Response
      * Could be used to be stored in the local session in order
      * to be used in a future Logout Request that the SP could
      * send to the SP, to set what specific session must be deleted
-     * 
+     *
      * @return string|null The SessionIndex value
      */
 
@@ -536,7 +536,7 @@ class OneLogin_Saml2_Response
 
     /**
      * Gets the Attributes from the AttributeStatement element.
-     * 
+     *
      * @return array The attributes of the SAML Assertion
      */
     public function getAttributes()
